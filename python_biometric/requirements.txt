@@ -1,4 +1,4 @@
 deepface
-opencv-contrib-python
+opencv-contrib-python<5
 numpy
 tf-keras
