@@ -95,6 +95,42 @@ def crop_and_resize_face(img, x, y, w, h, size=(100, 100)):
     face_gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
     return cv2.resize(face_gray, size)
 
+def detect_face_multiorientation(img, face_cascade):
+    """
+    Tries to detect faces in the original image.
+    If no face is detected, tries rotating the image by 90, 270, and 180 degrees
+    to handle mobile cameras that capture landscape frames.
+    Returns (detected_list, gray_image, color_image)
+    """
+    # 0 degrees
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    detected = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+    if len(detected) > 0:
+        return list(detected), gray, img
+
+    # Try 90 degrees clockwise (mobile portrait orientation sensor mismatch)
+    img_90 = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+    gray_90 = cv2.cvtColor(img_90, cv2.COLOR_BGR2GRAY)
+    detected = face_cascade.detectMultiScale(gray_90, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+    if len(detected) > 0:
+        return list(detected), gray_90, img_90
+
+    # Try 90 degrees counter-clockwise (270 degrees)
+    img_270 = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    gray_270 = cv2.cvtColor(img_270, cv2.COLOR_BGR2GRAY)
+    detected = face_cascade.detectMultiScale(gray_270, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+    if len(detected) > 0:
+        return list(detected), gray_270, img_270
+
+    # Try 180 degrees (upside down)
+    img_180 = cv2.rotate(img, cv2.ROTATE_180)
+    gray_180 = cv2.cvtColor(img_180, cv2.COLOR_BGR2GRAY)
+    detected = face_cascade.detectMultiScale(gray_180, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+    if len(detected) > 0:
+        return list(detected), gray_180, img_180
+
+    return [], gray, img
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 def main():
     script_dir   = os.path.dirname(os.path.abspath(__file__))
@@ -140,13 +176,11 @@ def main():
                     img = decode_image(img_data)
                     if img is None:
                         skipped += 1; continue
-                    gray     = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    detected = face_cascade.detectMultiScale(
-                        gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+                    detected, gray, img_upright = detect_face_multiorientation(img, face_cascade)
                     if len(detected) == 0:
                         skipped += 1; continue
                     for (x, y, w, h) in detected:
-                        faces.append(crop_and_resize_face(img, x, y, w, h))
+                        faces.append(crop_and_resize_face(img_upright, x, y, w, h))
                         labels.append(label_val)
                         break
                 except Exception as e:
@@ -182,9 +216,7 @@ def main():
                             "error": "Could not decode image bytes"})
                 return
 
-            gray     = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            detected = face_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+            detected, gray, img = detect_face_multiorientation(img, face_cascade)
 
             if len(detected) == 0:
                 write_json({"faceDetected": False, "count": 0, "label": -1,
@@ -236,9 +268,7 @@ def main():
                             "livenessScore": 0.0, "error": "Could not decode image"})
                 return
 
-            gray     = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            detected = face_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+            detected, gray, img = detect_face_multiorientation(img, face_cascade)
 
             face_list, best_score = [], 0.0
             for (x, y, w, h) in detected:
