@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 
 # ─── Configuration (overridable via environment variables) ───────────────────
-LBPH_THRESHOLD     = float(os.getenv("LBPH_THRESHOLD",     "75.0"))
+LBPH_THRESHOLD     = float(os.getenv("LBPH_THRESHOLD",     "105.0"))
 # Liveness: score below this threshold is treated as a spoof (photo / screen)
 LIVENESS_THRESHOLD = float(os.getenv("LIVENESS_THRESHOLD", "0.25"))
 

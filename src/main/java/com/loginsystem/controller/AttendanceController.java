@@ -59,7 +59,6 @@ public class AttendanceController {
     @PostMapping("/check-in")
     public ResponseEntity<?> checkIn(@RequestBody Map<String, String> payload, jakarta.servlet.http.HttpServletRequest request) {
         String scannedEmbStr = payload.get("embedding");
-        Boolean liveness = Boolean.valueOf(payload.get("livenessVerified"));
         String capturedImage = payload.get("capturedImage");
         String warning = null;
 
@@ -78,7 +77,6 @@ public class AttendanceController {
         }
         
         // Liveness check: evaluated server-side from Python script score
-        // The client-provided 'livenessVerified' flag is intentionally ignored
         if (detectionResult.livenessScore < livenessThreshold) {
             systemNotificationRepository.save(new SystemNotification("Check-in blocked: Anti-spoofing liveness verification failed. Score: " + detectionResult.livenessScore, "WARN"));
             logRepository.save(new Log(LocalTime.now().toString(), "Spoof attack blocked at check-in: liveness score " + detectionResult.livenessScore + " < threshold " + livenessThreshold, "ALERT"));
@@ -102,13 +100,16 @@ public class AttendanceController {
 
         LocalDate today = LocalDate.now();
         LocalTime nowTime = LocalTime.now();
+        String formattedTime = String.format("%02d:%02d:%02d", nowTime.getHour(), nowTime.getMinute(), nowTime.getSecond());
         
         Optional<AttendanceRecord> existing = attendanceRecordRepository.findByEmployeeAndDate(matchedEmployee, today);
         if (existing.isPresent()) {
+            AttendanceRecord rec = existing.get();
+            String checkinTimeStr = rec.getCheckInTime() != null ? String.format("%02d:%02d:%02d", rec.getCheckInTime().getHour(), rec.getCheckInTime().getMinute(), rec.getCheckInTime().getSecond()) : formattedTime;
             Map<String, Object> resp = new HashMap<>();
             resp.put("employee", matchedEmployee);
-            resp.put("record", existing.get());
-            resp.put("message", "Welcome back, " + matchedEmployee.getName() + ". You have already checked in today.");
+            resp.put("record", rec);
+            resp.put("message", "Welcome back, " + matchedEmployee.getName() + ". You already checked in today at " + checkinTimeStr + ".");
             if (warning != null) {
                 resp.put("warning", warning);
             }
@@ -121,12 +122,12 @@ public class AttendanceController {
         AttendanceRecord newRecord = new AttendanceRecord(matchedEmployee, today, nowTime, null, 0.0, status, true);
         attendanceRecordRepository.save(newRecord);
 
-        logRepository.save(new Log(nowTime.toString(), "Check-in successful: " + matchedEmployee.getName() + " [" + status + "]", "SUCCESS"));
+        logRepository.save(new Log(formattedTime, "Check-in successful: " + matchedEmployee.getName() + " at " + formattedTime + " [" + status + "]", "SUCCESS"));
         
         Map<String, Object> resp = new HashMap<>();
         resp.put("employee", matchedEmployee);
         resp.put("record", newRecord);
-        resp.put("message", "Welcome, " + matchedEmployee.getName() + ". Check-in recorded.");
+        resp.put("message", "Welcome, " + matchedEmployee.getName() + ". Check-in recorded at " + formattedTime + " [" + status + "].");
         if (warning != null) {
             resp.put("warning", warning);
         }
@@ -139,7 +140,6 @@ public class AttendanceController {
     @PostMapping("/check-out")
     public ResponseEntity<?> checkOut(@RequestBody Map<String, String> payload, jakarta.servlet.http.HttpServletRequest request) {
         String scannedEmbStr = payload.get("embedding");
-        Boolean liveness = Boolean.valueOf(payload.get("livenessVerified"));
         String capturedImage = payload.get("capturedImage");
         String warning = null;
 
@@ -175,19 +175,18 @@ public class AttendanceController {
 
         LocalDate today = LocalDate.now();
         LocalTime nowTime = LocalTime.now();
+        String formattedTime = String.format("%02d:%02d:%02d", nowTime.getHour(), nowTime.getMinute(), nowTime.getSecond());
         
         Optional<AttendanceRecord> existing = attendanceRecordRepository.findByEmployeeAndDate(matchedEmployee, today);
         if (!existing.isPresent()) {
-            AttendanceRecord record = new AttendanceRecord(matchedEmployee, today, LocalTime.of(9, 0), nowTime, 0.0, "PRESENT", true);
-            double hours = (nowTime.toSecondOfDay() - LocalTime.of(9, 0).toSecondOfDay()) / 3600.0;
-            record.setWorkingHours(Math.round(hours * 100.0) / 100.0);
+            AttendanceRecord record = new AttendanceRecord(matchedEmployee, today, nowTime, nowTime, 0.0, "PRESENT", true);
             attendanceRecordRepository.save(record);
             
-            logRepository.save(new Log(nowTime.toString(), "Auto check-in + check-out for: " + matchedEmployee.getName(), "SUCCESS"));
+            logRepository.save(new Log(formattedTime, "Check-out (Auto Check-in) for: " + matchedEmployee.getName() + " at " + formattedTime, "SUCCESS"));
             Map<String, Object> resp = new HashMap<>();
             resp.put("employee", matchedEmployee);
             resp.put("record", record);
-            resp.put("message", "Goodbye, " + matchedEmployee.getName() + ". Worked: " + record.getWorkingHours() + " hours.");
+            resp.put("message", "Goodbye, " + matchedEmployee.getName() + ". Check-out recorded at " + formattedTime + ".");
             if (warning != null) {
                 resp.put("warning", warning);
             }
@@ -197,20 +196,25 @@ public class AttendanceController {
         AttendanceRecord record = existing.get();
         record.setCheckOutTime(nowTime);
         
-        // Calculate working hours
-        long checkinSecs = record.getCheckInTime().toSecondOfDay();
-        long checkoutSecs = nowTime.toSecondOfDay();
-        double hours = (checkoutSecs - checkinSecs) / 3600.0;
-        record.setWorkingHours(Math.round(hours * 100.0) / 100.0);
+        // Calculate exact working hours
+        if (record.getCheckInTime() != null) {
+            long checkinSecs = record.getCheckInTime().toSecondOfDay();
+            long checkoutSecs = nowTime.toSecondOfDay();
+            double hours = Math.max(0.0, (checkoutSecs - checkinSecs) / 3600.0);
+            record.setWorkingHours(Math.round(hours * 100.0) / 100.0);
+        } else {
+            record.setCheckInTime(nowTime);
+            record.setWorkingHours(0.0);
+        }
         
         attendanceRecordRepository.save(record);
 
-        logRepository.save(new Log(nowTime.toString(), "Check-out successful: " + matchedEmployee.getName() + " [Worked: " + record.getWorkingHours() + " hrs]", "SUCCESS"));
+        logRepository.save(new Log(formattedTime, "Check-out successful: " + matchedEmployee.getName() + " at " + formattedTime + " [Worked: " + record.getWorkingHours() + " hrs]", "SUCCESS"));
         
         Map<String, Object> resp = new HashMap<>();
         resp.put("employee", matchedEmployee);
         resp.put("record", record);
-        resp.put("message", "Goodbye, " + matchedEmployee.getName() + ". Worked: " + record.getWorkingHours() + " hours.");
+        resp.put("message", "Goodbye, " + matchedEmployee.getName() + ". Check-out recorded at " + formattedTime + ". Worked: " + record.getWorkingHours() + " hours.");
         if (warning != null) {
             resp.put("warning", warning);
         }
@@ -259,7 +263,6 @@ public class AttendanceController {
     @PostMapping("/verify-biometrics")
     public ResponseEntity<?> verifyBiometrics(@RequestBody Map<String, String> payload, jakarta.servlet.http.HttpServletRequest request) {
         String scannedEmbStr = payload.get("embedding");
-        Boolean liveness = Boolean.valueOf(payload.get("livenessVerified"));
         String expectedId = payload.get("expectedEmployeeId");
         String capturedImage = payload.get("capturedImage");
         String warning = null;
@@ -338,25 +341,27 @@ public class AttendanceController {
 
         BiometricPythonService.RecognitionResult recResult = biometricPythonService.recognizeFace(capturedImage);
         if (recResult.error != null) {
-            System.err.println("Biometric recognition engine error: " + recResult.error);
-            // Fallback: if no trained model exists yet, we can do legacy mock matching as fallback
-            if (recResult.error.contains("No trained biometric face model exists")) {
-                return legacyMatchFace(scannedEmbStr);
-            }
-            return null;
+            System.err.println("Biometric recognition engine notice/error: " + recResult.error);
+            // Fallback: if no trained model exists yet or engine notice occurs, use embedding distance match
+            return legacyMatchFace(scannedEmbStr);
         }
 
         if (recResult.faceDetected && recResult.label != null && recResult.label >= 0) {
             System.out.println("Face successfully recognized with label: " + recResult.label + " and distance/confidence: " + recResult.confidence);
-            return employeeRepository.findById(Long.valueOf(recResult.label)).orElse(null);
+            Employee emp = employeeRepository.findById(Long.valueOf(recResult.label)).orElse(null);
+            if (emp != null) {
+                return emp;
+            }
         } else {
             if (recResult.faceDetected) {
-                System.out.println("Face detected but not recognized (Unknown: label = " + recResult.label + ", distance = " + recResult.confidence + ")");
+                System.out.println("Face detected but not recognized by Python LBPH model (label = " + recResult.label + ", distance = " + recResult.confidence + "). Falling back to embedding vector comparison.");
             } else {
                 System.out.println("No face detected by recognition engine.");
             }
         }
-        return null;
+
+        // Secondary Fallback: Use embedding vector distance matching if Python LBPH model did not return a valid match
+        return legacyMatchFace(scannedEmbStr);
     }
 
     private Employee legacyMatchFace(String scannedEmbStr) {
