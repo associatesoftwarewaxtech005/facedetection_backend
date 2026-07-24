@@ -1,11 +1,13 @@
 package com.loginsystem.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
 @Entity
 @Table(name = "attendance_records")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class AttendanceRecord {
 
     @Id

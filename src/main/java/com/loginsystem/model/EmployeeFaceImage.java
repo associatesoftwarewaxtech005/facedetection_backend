@@ -1,9 +1,11 @@
 package com.loginsystem.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 
 @Entity
 @Table(name = "employee_face_images")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class EmployeeFaceImage {
 
     @Id
