@@ -56,6 +56,17 @@ public class DataInitializer implements CommandLineRunner {
             }
         }
 
+        // Update any existing attendance records dated 2026-07-18 to today's actual date
+        List<AttendanceRecord> oldRecords = attendanceRecordRepository.findAll();
+        LocalDate todayActual = LocalDate.now();
+        for (AttendanceRecord rec : oldRecords) {
+            if (rec.getDate() != null && rec.getDate().isBefore(todayActual)) {
+                if (rec.getDate().toString().equals("2026-07-18")) {
+                    rec.setDate(todayActual);
+                    attendanceRecordRepository.save(rec);
+                }
+            }
+        }
         // 1. Seed Admin credentials
         if (adminUserRepository.count() == 0) {
             adminUserRepository.save(new AdminUser("admin", "admin"));

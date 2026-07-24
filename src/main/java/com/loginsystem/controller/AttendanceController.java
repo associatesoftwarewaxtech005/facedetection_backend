@@ -335,33 +335,38 @@ public class AttendanceController {
     }
 
     private Employee matchFace(String scannedEmbStr, String capturedImage) {
-        if (capturedImage == null || capturedImage.trim().isEmpty()) {
-            return null;
-        }
-
-        BiometricPythonService.RecognitionResult recResult = biometricPythonService.recognizeFace(capturedImage);
-        if (recResult.error != null) {
-            System.err.println("Biometric recognition engine notice/error: " + recResult.error);
-            // Fallback: if no trained model exists yet or engine notice occurs, use embedding distance match
-            return legacyMatchFace(scannedEmbStr);
-        }
-
-        if (recResult.faceDetected && recResult.label != null && recResult.label >= 0) {
-            System.out.println("Face successfully recognized with label: " + recResult.label + " and distance/confidence: " + recResult.confidence);
-            Employee emp = employeeRepository.findById(Long.valueOf(recResult.label)).orElse(null);
-            if (emp != null) {
-                return emp;
-            }
-        } else {
-            if (recResult.faceDetected) {
-                System.out.println("Face detected but not recognized by Python LBPH model (label = " + recResult.label + ", distance = " + recResult.confidence + "). Falling back to embedding vector comparison.");
-            } else {
-                System.out.println("No face detected by recognition engine.");
+        // 1. Primary Match: Use 128-D embedding vector comparison if provided
+        if (scannedEmbStr != null && !scannedEmbStr.trim().isEmpty()) {
+            Employee vectorMatch = legacyMatchFace(scannedEmbStr);
+            if (vectorMatch != null) {
+                System.out.println("Face matched via embedding vector to employee: " + vectorMatch.getName() + " (" + vectorMatch.getEmployeeId() + ")");
+                return vectorMatch;
             }
         }
 
-        // Secondary Fallback: Use embedding vector distance matching if Python LBPH model did not return a valid match
-        return legacyMatchFace(scannedEmbStr);
+        // 2. Secondary Match: Use Python LBPH Recognizer model if image is provided
+        if (capturedImage != null && !capturedImage.trim().isEmpty()) {
+            BiometricPythonService.RecognitionResult recResult = biometricPythonService.recognizeFace(capturedImage);
+            if (recResult.error != null) {
+                System.err.println("Biometric recognition engine notice/error: " + recResult.error);
+                return null;
+            }
+
+            if (recResult.faceDetected && recResult.label != null && recResult.label >= 0) {
+                // Enforce strict confidence threshold (<= 65.0) to prevent false positives
+                if (recResult.confidence != null && recResult.confidence <= 65.0) {
+                    System.out.println("Face successfully recognized with label: " + recResult.label + " and distance/confidence: " + recResult.confidence);
+                    Employee emp = employeeRepository.findById(Long.valueOf(recResult.label)).orElse(null);
+                    if (emp != null) {
+                        return emp;
+                    }
+                } else {
+                    System.out.println("Rejected weak LBPH recognition match (label = " + recResult.label + ", distance = " + recResult.confidence + " > 65.0 threshold).");
+                }
+            }
+        }
+
+        return null;
     }
 
     private Employee legacyMatchFace(String scannedEmbStr) {
