@@ -335,24 +335,12 @@ public class AttendanceController {
     }
 
     private Employee matchFace(String scannedEmbStr, String capturedImage) {
-        // 1. Primary Match: Use 128-D embedding vector comparison if provided
-        if (scannedEmbStr != null && !scannedEmbStr.trim().isEmpty()) {
-            Employee vectorMatch = legacyMatchFace(scannedEmbStr);
-            if (vectorMatch != null) {
-                System.out.println("Face matched via embedding vector to employee: " + vectorMatch.getName() + " (" + vectorMatch.getEmployeeId() + ")");
-                return vectorMatch;
-            }
-        }
-
-        // 2. Secondary Match: Use Python LBPH Recognizer model if image is provided
+        // 1. Primary Match: Real Camera Facial Recognition (uses Python LBPH engine on webcam image)
         if (capturedImage != null && !capturedImage.trim().isEmpty()) {
             BiometricPythonService.RecognitionResult recResult = biometricPythonService.recognizeFace(capturedImage);
             if (recResult.error != null) {
                 System.err.println("Biometric recognition engine notice/error: " + recResult.error);
-                return null;
-            }
-
-            if (recResult.faceDetected && recResult.label != null && recResult.label >= 0) {
+            } else if (recResult.faceDetected && recResult.label != null && recResult.label >= 0) {
                 // Enforce strict confidence threshold (<= 65.0) to prevent false positives
                 if (recResult.confidence != null && recResult.confidence <= 65.0) {
                     System.out.println("Face successfully recognized with label: " + recResult.label + " and distance/confidence: " + recResult.confidence);
@@ -363,6 +351,15 @@ public class AttendanceController {
                 } else {
                     System.out.println("Rejected weak LBPH recognition match (label = " + recResult.label + ", distance = " + recResult.confidence + " > 65.0 threshold).");
                 }
+            }
+        }
+
+        // 2. Secondary Match: 128-D vector embedding comparison (for developer simulator / registered profiles)
+        if (scannedEmbStr != null && !scannedEmbStr.trim().isEmpty()) {
+            Employee vectorMatch = legacyMatchFace(scannedEmbStr);
+            if (vectorMatch != null) {
+                System.out.println("Face matched via embedding vector to employee: " + vectorMatch.getName() + " (" + vectorMatch.getEmployeeId() + ")");
+                return vectorMatch;
             }
         }
 
