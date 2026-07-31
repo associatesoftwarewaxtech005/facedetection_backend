@@ -105,15 +105,39 @@ public class AttendanceController {
         Optional<AttendanceRecord> existing = attendanceRecordRepository.findByEmployeeAndDate(matchedEmployee, today);
         if (existing.isPresent()) {
             AttendanceRecord rec = existing.get();
-            String checkinTimeStr = rec.getCheckInTime() != null ? String.format("%02d:%02d:%02d", rec.getCheckInTime().getHour(), rec.getCheckInTime().getMinute(), rec.getCheckInTime().getSecond()) : formattedTime;
-            Map<String, Object> resp = new HashMap<>();
-            resp.put("employee", matchedEmployee);
-            resp.put("record", rec);
-            resp.put("message", "Welcome back, " + matchedEmployee.getName() + ". You already checked in today at " + checkinTimeStr + ".");
-            if (warning != null) {
-                resp.put("warning", warning);
+            if (rec.getCheckOutTime() == null) {
+                rec.setCheckOutTime(nowTime);
+                if (rec.getCheckInTime() != null) {
+                    long checkinSecs = rec.getCheckInTime().toSecondOfDay();
+                    long checkoutSecs = nowTime.toSecondOfDay();
+                    double hours = Math.max(0.0, (checkoutSecs - checkinSecs) / 3600.0);
+                    rec.setWorkingHours(Math.round(hours * 100.0) / 100.0);
+                } else {
+                    rec.setCheckInTime(nowTime);
+                    rec.setWorkingHours(0.0);
+                }
+                attendanceRecordRepository.save(rec);
+                logRepository.save(new Log(formattedTime, "Check-out successful: " + matchedEmployee.getName() + " at " + formattedTime + " [Worked: " + rec.getWorkingHours() + " hrs]", "SUCCESS"));
+
+                Map<String, Object> resp = new HashMap<>();
+                resp.put("employee", matchedEmployee);
+                resp.put("record", rec);
+                resp.put("message", "Goodbye, " + matchedEmployee.getName() + ". Check-out recorded at " + formattedTime + ". Worked: " + rec.getWorkingHours() + " hours.");
+                if (warning != null) {
+                    resp.put("warning", warning);
+                }
+                return ResponseEntity.ok(resp);
+            } else {
+                String checkinTimeStr = rec.getCheckInTime() != null ? String.format("%02d:%02d:%02d", rec.getCheckInTime().getHour(), rec.getCheckInTime().getMinute(), rec.getCheckInTime().getSecond()) : formattedTime;
+                Map<String, Object> resp = new HashMap<>();
+                resp.put("employee", matchedEmployee);
+                resp.put("record", rec);
+                resp.put("message", "Welcome back, " + matchedEmployee.getName() + ". You already completed check-in at " + checkinTimeStr + " and check-out today.");
+                if (warning != null) {
+                    resp.put("warning", warning);
+                }
+                return ResponseEntity.ok(resp);
             }
-            return ResponseEntity.ok(resp);
         }
 
         // Check if Late (threshold: 09:15 AM)
@@ -335,26 +359,43 @@ public class AttendanceController {
     }
 
     private Employee matchFace(String scannedEmbStr, String capturedImage) {
-        // 1. Primary Match: Real Camera Facial Recognition (uses Python LBPH engine on webcam image)
+        // 1. Primary Match: Real Camera DeepFace Facial Recognition
         if (capturedImage != null && !capturedImage.trim().isEmpty()) {
             BiometricPythonService.RecognitionResult recResult = biometricPythonService.recognizeFace(capturedImage);
             if (recResult.error != null) {
                 System.err.println("Biometric recognition engine notice/error: " + recResult.error);
-            } else if (recResult.faceDetected) {
-                if (recResult.label != null && recResult.label >= 0 && recResult.confidence != null && recResult.confidence <= 65.0) {
-                    System.out.println("Face successfully recognized with label: " + recResult.label + " and distance/confidence: " + recResult.confidence);
-                    Employee emp = employeeRepository.findById(Long.valueOf(recResult.label)).orElse(null);
-                    if (emp != null) {
-                        return emp;
+            } else if (recResult.faceDetected && recResult.embedding != null && !recResult.embedding.isEmpty()) {
+                double[] liveVector = convertToDoubleArray(recResult.embedding);
+                List<EmployeeFaceImage> allFaces = employeeFaceImageRepository.findAll();
+                EmployeeFaceImage bestMatch = null;
+                double minDistance = Double.MAX_VALUE;
+                double threshold = 0.55;
+
+                for (EmployeeFaceImage face : allFaces) {
+                    String faceEmb = face.getEmbedding();
+                    if (faceEmb != null && !faceEmb.trim().isEmpty()) {
+                        double[] storedVector = parseEmbedding(faceEmb);
+                        if (!isAllZeros(storedVector)) {
+                            double dist = calculateDistance(liveVector, storedVector);
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                bestMatch = face;
+                            }
+                        }
                     }
+                }
+
+                if (bestMatch != null && minDistance < threshold) {
+                    System.out.println("DeepFace match succeeded: " + bestMatch.getEmployee().getName() + " (" + bestMatch.getEmployee().getEmployeeId() + ") with distance: " + minDistance);
+                    return bestMatch.getEmployee();
                 } else {
-                    System.out.println("Visual face recognition did not match any registered employee (label = " + recResult.label + ", distance = " + recResult.confidence + "). Access denied.");
+                    System.out.println("DeepFace match rejected: best distance " + minDistance + " >= threshold " + threshold + ". Access denied.");
                     return null;
                 }
             }
         }
 
-        // 2. Secondary Match: 128-D vector embedding comparison (for developer simulator / registered profiles without camera)
+        // 2. Secondary Match: 128-D vector embedding comparison (for developer simulator)
         if (scannedEmbStr != null && !scannedEmbStr.trim().isEmpty()) {
             Employee vectorMatch = legacyMatchFace(scannedEmbStr);
             if (vectorMatch != null) {
@@ -364,6 +405,15 @@ public class AttendanceController {
         }
 
         return null;
+    }
+
+    private double[] convertToDoubleArray(List<Double> list) {
+        if (list == null) return new double[0];
+        double[] arr = new double[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            arr[i] = list.get(i) != null ? list.get(i) : 0.0;
+        }
+        return arr;
     }
 
     private Employee legacyMatchFace(String scannedEmbStr) {

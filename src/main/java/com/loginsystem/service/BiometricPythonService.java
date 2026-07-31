@@ -59,6 +59,7 @@ public class BiometricPythonService {
         public Integer label;
         public Double confidence;
         public double livenessScore;
+        public List<Double> embedding = new ArrayList<>();
         public String error;
 
         public RecognitionResult() {}

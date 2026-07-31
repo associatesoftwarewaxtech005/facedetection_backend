@@ -174,39 +174,40 @@ public class AdminController {
     public ResponseEntity<?> registerFace(@PathVariable Long id, @RequestBody Map<String, String> faceData) {
         return employeeRepository.findById(id).map(employee -> {
             String faceImage = faceData.get("faceImage");
-            String embedding = faceData.get("embedding");
             
-            if (faceImage != null && !faceImage.trim().isEmpty()) {
-                BiometricPythonService.DetectionResult detectionResult = biometricPythonService.detectFaces(faceImage);
-                if (detectionResult.error != null) {
-                    return ResponseEntity.status(500).body(Map.of("message", "Biometric engine error: " + detectionResult.error));
-                }
-                if (detectionResult.count == 0) {
-                    return ResponseEntity.badRequest().body(Map.of("message", "No face detected in registration image."));
-                } else if (detectionResult.count > 1) {
-                    return ResponseEntity.badRequest().body(Map.of("message", "Multiple faces detected. Registration requires exactly one face."));
-                }
-            } else {
+            if (faceImage == null || faceImage.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("message", "Required parameter 'faceImage' (Base64) is missing."));
             }
-            
+
+            BiometricPythonService.RecognitionResult recResult = biometricPythonService.recognizeFace(faceImage);
+            if (recResult.error != null) {
+                return ResponseEntity.status(500).body(Map.of("message", "Biometric engine error: " + recResult.error));
+            }
+            if (!recResult.faceDetected || recResult.count == 0) {
+                return ResponseEntity.badRequest().body(Map.of("message", "No face detected in registration image."));
+            } else if (recResult.count > 1) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Multiple faces detected. Registration requires exactly one face."));
+            }
+
+            String embedding = (recResult.embedding != null && !recResult.embedding.isEmpty())
+                    ? recResult.embedding.toString()
+                    : faceData.get("embedding");
+
             if (embedding != null && !embedding.trim().isEmpty()) {
                 double[] newVector = parseEmbedding(embedding);
-                if (isAllZeros(newVector)) {
-                    return ResponseEntity.badRequest().body(Map.of("message", "Invalid face embedding. Cannot be all zeros."));
-                }
-                
-                List<EmployeeFaceImage> allFaces = employeeFaceImageRepository.findAll();
-                double threshold = 0.48;
-                for (EmployeeFaceImage face : allFaces) {
-                    if (!face.getEmployee().getId().equals(employee.getId())) {
-                        String faceEmb = face.getEmbedding();
-                        if (faceEmb != null && !faceEmb.trim().isEmpty()) {
-                            double[] storedVector = parseEmbedding(faceEmb);
-                            if (!isAllZeros(storedVector)) {
-                                double dist = calculateDistance(newVector, storedVector);
-                                if (dist < threshold) {
-                                    return ResponseEntity.badRequest().body(Map.of("message", "CRITICAL: Face biometric is already registered to employee " + face.getEmployee().getName() + " (" + face.getEmployee().getEmployeeId() + ")."));
+                if (!isAllZeros(newVector)) {
+                    List<EmployeeFaceImage> allFaces = employeeFaceImageRepository.findAll();
+                    double threshold = 0.55;
+                    for (EmployeeFaceImage face : allFaces) {
+                        if (!face.getEmployee().getId().equals(employee.getId())) {
+                            String faceEmb = face.getEmbedding();
+                            if (faceEmb != null && !faceEmb.trim().isEmpty()) {
+                                double[] storedVector = parseEmbedding(faceEmb);
+                                if (!isAllZeros(storedVector)) {
+                                    double dist = calculateDistance(newVector, storedVector);
+                                    if (dist < threshold) {
+                                        return ResponseEntity.badRequest().body(Map.of("message", "CRITICAL: Face biometric is already registered to employee " + face.getEmployee().getName() + " (" + face.getEmployee().getEmployeeId() + ")."));
+                                    }
                                 }
                             }
                         }
@@ -216,8 +217,6 @@ public class AdminController {
             
             EmployeeFaceImage newFace = new EmployeeFaceImage(employee, faceImage, embedding);
             employeeFaceImageRepository.save(newFace);
-            
-            triggerModelTrainingAsync();
             
             logRepository.save(new Log(LocalTime.now().toString(), "Registered biometric face image for " + employee.getName(), "SECURE"));
             return ResponseEntity.ok(Map.of("message", "Face image successfully registered.", "id", newFace.getId()));
