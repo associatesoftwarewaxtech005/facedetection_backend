@@ -24,8 +24,10 @@ public class BiometricPythonService {
     @Value("${biometric.liveness-threshold:0.25}")
     private double livenessThreshold;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public static class Face {
         public int x;
         public int y;
@@ -43,16 +45,19 @@ public class BiometricPythonService {
         }
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public static class DetectionResult {
         public boolean faceDetected;
         public int count;
         public List<Face> faces = new ArrayList<>();
         public double livenessScore;
+        public List<Double> embedding = new ArrayList<>();
         public String error;
 
         public DetectionResult() {}
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
     public static class RecognitionResult {
         public boolean faceDetected;
         public int count;
