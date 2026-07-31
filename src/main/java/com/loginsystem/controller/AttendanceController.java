@@ -369,7 +369,7 @@ public class AttendanceController {
                 List<EmployeeFaceImage> allFaces = employeeFaceImageRepository.findAll();
                 EmployeeFaceImage bestMatch = null;
                 double minDistance = Double.MAX_VALUE;
-                double threshold = 0.55;
+                double threshold = 0.85;
 
                 for (EmployeeFaceImage face : allFaces) {
                     String faceEmb = face.getEmbedding();
@@ -426,7 +426,7 @@ public class AttendanceController {
         List<EmployeeFaceImage> allFaces = employeeFaceImageRepository.findAll();
         EmployeeFaceImage bestMatch = null;
         double minDistance = Double.MAX_VALUE;
-        double threshold = 0.48;
+        double threshold = 0.85;
 
         for (EmployeeFaceImage face : allFaces) {
             String faceEmb = face.getEmbedding();
