@@ -31,4 +31,4 @@ RUN ./gradlew bootJar --no-daemon
 EXPOSE 8082
 
 # Start the Spring Boot application jar
-CMD ["java", "-jar", "build/libs/loginsystem-0.0.1-SNAPSHOT.jar"]
+CMD ["java", "-XX:+UseG1GC", "-Xmx384m", "-jar", "build/libs/loginsystem-0.0.1-SNAPSHOT.jar"]

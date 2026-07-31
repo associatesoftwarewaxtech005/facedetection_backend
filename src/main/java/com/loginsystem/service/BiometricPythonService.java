@@ -91,8 +91,17 @@ public class BiometricPythonService {
             File scriptFile = new File(scriptPath);
             String resolvedScriptPath = scriptFile.getAbsolutePath();
 
+            String execPath = pythonCommand;
+            File venvLinux = new File("python_biometric/.venv/bin/python");
+            File venvWin = new File("python_biometric/.venv/Scripts/python.exe");
+            if (venvLinux.exists()) {
+                execPath = venvLinux.getAbsolutePath();
+            } else if (venvWin.exists()) {
+                execPath = venvWin.getAbsolutePath();
+            }
+
             List<String> command = new ArrayList<>();
-            command.add(pythonCommand);
+            command.add(execPath);
             command.add(resolvedScriptPath);
             if (mode != null) {
                 command.add(mode);
