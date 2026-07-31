@@ -91,9 +91,18 @@ def compute_liveness_score(gray_img, x, y, w, h):
 
 # ─── Face helpers ─────────────────────────────────────────────────────────────
 def crop_and_resize_face(img, x, y, w, h, size=(100, 100)):
-    face      = img[y:y + h, x:x + w]
+    pad_w = int(w * 0.1)
+    pad_h = int(h * 0.1)
+    x1 = max(0, x - pad_w)
+    y1 = max(0, y - pad_h)
+    x2 = min(img.shape[1], x + w + pad_w)
+    y2 = min(img.shape[0], y + h + pad_h)
+    face = img[y1:y2, x1:x2]
+    if face.size == 0:
+        face = img[y:y + h, x:x + w]
     face_gray = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
-    return cv2.resize(face_gray, size)
+    face_eq   = cv2.equalizeHist(face_gray)
+    return cv2.resize(face_eq, size)
 
 def detect_face_multiorientation(img, face_cascade):
     """

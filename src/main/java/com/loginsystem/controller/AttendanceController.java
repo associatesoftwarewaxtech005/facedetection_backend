@@ -340,21 +340,21 @@ public class AttendanceController {
             BiometricPythonService.RecognitionResult recResult = biometricPythonService.recognizeFace(capturedImage);
             if (recResult.error != null) {
                 System.err.println("Biometric recognition engine notice/error: " + recResult.error);
-            } else if (recResult.faceDetected && recResult.label != null && recResult.label >= 0) {
-                // Enforce strict confidence threshold (<= 65.0) to prevent false positives
-                if (recResult.confidence != null && recResult.confidence <= 65.0) {
+            } else if (recResult.faceDetected) {
+                if (recResult.label != null && recResult.label >= 0 && recResult.confidence != null && recResult.confidence <= 65.0) {
                     System.out.println("Face successfully recognized with label: " + recResult.label + " and distance/confidence: " + recResult.confidence);
                     Employee emp = employeeRepository.findById(Long.valueOf(recResult.label)).orElse(null);
                     if (emp != null) {
                         return emp;
                     }
                 } else {
-                    System.out.println("Rejected weak LBPH recognition match (label = " + recResult.label + ", distance = " + recResult.confidence + " > 65.0 threshold).");
+                    System.out.println("Visual face recognition did not match any registered employee (label = " + recResult.label + ", distance = " + recResult.confidence + "). Access denied.");
+                    return null;
                 }
             }
         }
 
-        // 2. Secondary Match: 128-D vector embedding comparison (for developer simulator / registered profiles)
+        // 2. Secondary Match: 128-D vector embedding comparison (for developer simulator / registered profiles without camera)
         if (scannedEmbStr != null && !scannedEmbStr.trim().isEmpty()) {
             Employee vectorMatch = legacyMatchFace(scannedEmbStr);
             if (vectorMatch != null) {
