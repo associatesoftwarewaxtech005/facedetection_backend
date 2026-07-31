@@ -87,17 +87,17 @@ public class DataInitializer implements CommandLineRunner {
             employeeRepository.save(abhi);
 
             // Seed mock face images & embeddings (128-dim mock JSON array)
-            // Embedding is a mock float array starting with different signatures
+            String sampleAvatarBase64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI1MCIgZmlsbD0iIzNiODI2NiIvPjwvc3ZnPg==";
             String aliceEmbedding = generateMockEmbedding(0.15);
             String bobEmbedding = generateMockEmbedding(0.45);
             String dianaEmbedding = generateMockEmbedding(0.75);
             String abhiEmbedding = generateMockEmbedding(0.95);
 
-            employeeFaceImageRepository.save(new EmployeeFaceImage(alice, "MOCK_ALICE_BASE64_1", aliceEmbedding));
-            employeeFaceImageRepository.save(new EmployeeFaceImage(alice, "MOCK_ALICE_BASE64_2", aliceEmbedding));
-            employeeFaceImageRepository.save(new EmployeeFaceImage(bob, "MOCK_BOB_BASE64_1", bobEmbedding));
-            employeeFaceImageRepository.save(new EmployeeFaceImage(Diana, "MOCK_DIANA_BASE64_1", dianaEmbedding));
-            employeeFaceImageRepository.save(new EmployeeFaceImage(abhi, "MOCK_ABHI_BASE64_1", abhiEmbedding));
+            employeeFaceImageRepository.save(new EmployeeFaceImage(alice, sampleAvatarBase64, aliceEmbedding));
+            employeeFaceImageRepository.save(new EmployeeFaceImage(alice, sampleAvatarBase64, aliceEmbedding));
+            employeeFaceImageRepository.save(new EmployeeFaceImage(bob, sampleAvatarBase64, bobEmbedding));
+            employeeFaceImageRepository.save(new EmployeeFaceImage(Diana, sampleAvatarBase64, dianaEmbedding));
+            employeeFaceImageRepository.save(new EmployeeFaceImage(abhi, sampleAvatarBase64, abhiEmbedding));
 
             // Seed historical attendance data
             LocalDate today = LocalDate.now();

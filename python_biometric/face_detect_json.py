@@ -127,6 +127,36 @@ def extract_deepface_embedding(img):
         log(f"DeepFace extraction exception: {e}")
     return None
 
+def extract_opencv_fallback_embedding(gray_img, x, y, w, h):
+    try:
+        pad = max(int(min(w, h) * 0.05), 2)
+        x1 = max(0, x - pad); y1 = max(0, y - pad)
+        x2 = min(gray_img.shape[1], x + w + pad)
+        y2 = min(gray_img.shape[0], y + h + pad)
+        face_roi = gray_img[y1:y2, x1:x2]
+        if face_roi.size == 0:
+            return []
+        
+        resized = cv2.resize(face_roi, (64, 64))
+        equalized = cv2.equalizeHist(resized)
+        
+        sobelx = cv2.Sobel(equalized, cv2.CV_32F, 1, 0, ksize=3)
+        sobely = cv2.Sobel(equalized, cv2.CV_32F, 0, 1, ksize=3)
+        magnitude = cv2.magnitude(sobelx, sobely)
+        
+        mag_8x8 = cv2.resize(magnitude, (8, 8)).flatten()
+        spatial_8x8 = cv2.resize(equalized.astype(np.float32), (8, 8)).flatten()
+        
+        vec = np.concatenate([spatial_8x8, mag_8x8])
+        norm = np.linalg.norm(vec)
+        if norm > 1e-6:
+            vec = vec / norm
+            
+        return [round(float(v), 6) for v in vec]
+    except Exception as e:
+        log(f"OpenCV embedding fallback error: {e}")
+        return []
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 def main():
     cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -167,6 +197,8 @@ def main():
         (x, y, w, h)   = best_face
         liveness_score = compute_liveness_score(gray, x, y, w, h)
         embedding      = extract_deepface_embedding(img_upright)
+        if not embedding or len(embedding) == 0:
+            embedding = extract_opencv_fallback_embedding(gray, x, y, w, h)
 
         if mode == "train":
             write_json({"success": True, "message": "DeepFace neural network is pre-trained and stateless.",
