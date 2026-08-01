@@ -84,7 +84,7 @@ public class AttendanceController {
             return ResponseEntity.status(403).body(Map.of("message", "LIVENESS FAILURE: Photo or spoofing suspected."));
         }
 
-        Employee matchedEmployee = matchFace(scannedEmbStr, capturedImage);
+        Employee matchedEmployee = matchFace(detectionResult.embedding, scannedEmbStr, capturedImage);
         if (matchedEmployee == null) {
             systemNotificationRepository.save(new SystemNotification("Unauthorized face scan attempt at portal.", "UNKNOWN_FACE"));
             logRepository.save(new Log(LocalTime.now().toString(), "Unrecognized face scan at check-in portal", "ALERT"));
@@ -189,7 +189,7 @@ public class AttendanceController {
             return ResponseEntity.status(403).body(Map.of("message", "LIVENESS FAILURE: Photo or spoofing suspected."));
         }
 
-        Employee matchedEmployee = matchFace(scannedEmbStr, capturedImage);
+        Employee matchedEmployee = matchFace(detectionResult.embedding, scannedEmbStr, capturedImage);
         if (matchedEmployee == null) {
             systemNotificationRepository.save(new SystemNotification("Unauthorized face scan attempt at check-out portal.", "UNKNOWN_FACE"));
             logRepository.save(new Log(LocalTime.now().toString(), "Unrecognized face scan at check-out portal", "ALERT"));
@@ -313,7 +313,7 @@ public class AttendanceController {
             return ResponseEntity.status(403).body(Map.of("message", "LIVENESS FAILURE: Photo or spoofing suspected."));
         }
 
-        Employee matchedEmployee = matchFace(scannedEmbStr, capturedImage);
+        Employee matchedEmployee = matchFace(detectionResult.embedding, scannedEmbStr, capturedImage);
         if (matchedEmployee == null) {
             systemNotificationRepository.save(new SystemNotification("Unauthorized portal login attempt.", "UNKNOWN_FACE"));
             logRepository.save(new Log(LocalTime.now().toString(), "Unrecognized face scan at portal login", "ALERT"));
@@ -358,61 +358,62 @@ public class AttendanceController {
         return true;
     }
 
-    private Employee matchFace(String scannedEmbStr, String capturedImage) {
-        // 1. Primary Match: Real Camera Facial Recognition
-        if (capturedImage != null && !capturedImage.trim().isEmpty()) {
+    private Employee matchFace(List<Double> liveEmbedding, String scannedEmbStr, String capturedImage) {
+        double[] liveVector = null;
+        if (liveEmbedding != null && !liveEmbedding.isEmpty()) {
+            liveVector = convertToDoubleArray(liveEmbedding);
+        } else if (capturedImage != null && !capturedImage.trim().isEmpty()) {
             BiometricPythonService.RecognitionResult recResult = biometricPythonService.recognizeFace(capturedImage);
             if (recResult.error != null) {
                 System.err.println("Biometric recognition engine notice/error: " + recResult.error);
             } else if (recResult.faceDetected && recResult.embedding != null && !recResult.embedding.isEmpty()) {
-                double[] liveVector = convertToDoubleArray(recResult.embedding);
-                List<EmployeeFaceImage> allFaces = employeeFaceImageRepository.findAll();
-                EmployeeFaceImage bestMatch = null;
-                double maxSimilarity = -1.0;
-                double minDistance = Double.MAX_VALUE;
+                liveVector = convertToDoubleArray(recResult.embedding);
+            }
+        }
 
-                for (EmployeeFaceImage face : allFaces) {
-                    String faceEmb = face.getEmbedding();
-                    double[] storedVector = null;
+        if (liveVector != null && !isAllZeros(liveVector)) {
+            List<EmployeeFaceImage> allFaces = employeeFaceImageRepository.findAll();
+            EmployeeFaceImage bestMatch = null;
+            double maxSimilarity = -1.0;
 
-                    if (faceEmb != null && !faceEmb.trim().isEmpty()) {
-                        storedVector = parseEmbedding(faceEmb);
-                    }
+            for (EmployeeFaceImage face : allFaces) {
+                String faceEmb = face.getEmbedding();
+                double[] storedVector = null;
 
-                    // If stored vector is empty/zero or legacy, dynamically compute embedding from face image
-                    if ((storedVector == null || isAllZeros(storedVector)) && face.getFaceImage() != null && face.getFaceImage().startsWith("data:image")) {
-                        try {
-                            BiometricPythonService.RecognitionResult storedRec = biometricPythonService.recognizeFace(face.getFaceImage());
-                            if (storedRec.faceDetected && storedRec.embedding != null && !storedRec.embedding.isEmpty()) {
-                                storedVector = convertToDoubleArray(storedRec.embedding);
-                                face.setEmbedding(Arrays.toString(storedVector));
-                                employeeFaceImageRepository.save(face);
-                            }
-                        } catch (Exception e) {
-                            System.err.println("Notice: Dynamic face embedding extraction for stored image skipped: " + e.getMessage());
+                if (faceEmb != null && !faceEmb.trim().isEmpty()) {
+                    storedVector = parseEmbedding(faceEmb);
+                }
+
+                // If stored vector is empty/zero or legacy, dynamically compute embedding from face image
+                if ((storedVector == null || isAllZeros(storedVector)) && face.getFaceImage() != null && face.getFaceImage().startsWith("data:image")) {
+                    try {
+                        BiometricPythonService.RecognitionResult storedRec = biometricPythonService.recognizeFace(face.getFaceImage());
+                        if (storedRec.faceDetected && storedRec.embedding != null && !storedRec.embedding.isEmpty()) {
+                            storedVector = convertToDoubleArray(storedRec.embedding);
+                            face.setEmbedding(Arrays.toString(storedVector));
+                            employeeFaceImageRepository.save(face);
                         }
-                    }
-
-                    if (storedVector != null && !isAllZeros(storedVector)) {
-                        double sim = calculateCosineSimilarity(liveVector, storedVector);
-                        double dist = calculateDistance(liveVector, storedVector);
-
-                        if (sim > maxSimilarity) {
-                            maxSimilarity = sim;
-                            minDistance = dist;
-                            bestMatch = face;
-                        }
+                    } catch (Exception e) {
+                        System.err.println("Notice: Dynamic face embedding extraction for stored image skipped: " + e.getMessage());
                     }
                 }
 
-                // Match condition: Cosine Similarity >= 0.65 and Euclidean Distance < 0.85 (Strict DeepFace/Facenet threshold)
-                if (bestMatch != null && maxSimilarity >= 0.65 && minDistance < 0.85) {
-                    System.out.println("Facial recognition match succeeded: " + bestMatch.getEmployee().getName() + " (" + bestMatch.getEmployee().getEmployeeId() + ") - Similarity: " + maxSimilarity + ", Distance: " + minDistance);
-                    return bestMatch.getEmployee();
-                } else {
-                    System.out.println("Facial recognition match rejected: max similarity " + maxSimilarity + " (requires >= 0.65) and min distance " + minDistance + " (requires < 0.85). Access denied.");
-                    return null;
+                if (storedVector != null && !isAllZeros(storedVector)) {
+                    double sim = calculateCosineSimilarity(liveVector, storedVector);
+                    if (sim > maxSimilarity) {
+                        maxSimilarity = sim;
+                        bestMatch = face;
+                    }
                 }
+            }
+
+            // Match condition: Cosine Similarity >= 0.52 (Accurate Facenet threshold)
+            if (bestMatch != null && maxSimilarity >= 0.52) {
+                System.out.println("Facial recognition match succeeded: " + bestMatch.getEmployee().getName() + " (" + bestMatch.getEmployee().getEmployeeId() + ") - Similarity: " + maxSimilarity);
+                return bestMatch.getEmployee();
+            } else {
+                System.out.println("Facial recognition match rejected: max similarity " + maxSimilarity + " < 0.52 threshold. Access denied.");
+                return null;
             }
         }
 
