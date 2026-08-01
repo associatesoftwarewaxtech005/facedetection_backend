@@ -197,15 +197,15 @@ public class AdminController {
                 double[] newVector = parseEmbedding(embedding);
                 if (!isAllZeros(newVector)) {
                     List<EmployeeFaceImage> allFaces = employeeFaceImageRepository.findAll();
-                    double threshold = 0.55;
                     for (EmployeeFaceImage face : allFaces) {
                         if (!face.getEmployee().getId().equals(employee.getId())) {
                             String faceEmb = face.getEmbedding();
                             if (faceEmb != null && !faceEmb.trim().isEmpty()) {
                                 double[] storedVector = parseEmbedding(faceEmb);
                                 if (!isAllZeros(storedVector)) {
+                                    double sim = calculateCosineSimilarity(newVector, storedVector);
                                     double dist = calculateDistance(newVector, storedVector);
-                                    if (dist < threshold) {
+                                    if (sim >= 0.65 || dist < 0.85) {
                                         return ResponseEntity.badRequest().body(Map.of("message", "CRITICAL: Face biometric is already registered to employee " + face.getEmployee().getName() + " (" + face.getEmployee().getEmployeeId() + ")."));
                                     }
                                 }
@@ -394,5 +394,20 @@ public class AdminController {
             sum += diff * diff;
         }
         return Math.sqrt(sum);
+    }
+
+    private double calculateCosineSimilarity(double[] v1, double[] v2) {
+        if (v1 == null || v2 == null || v1.length == 0 || v2.length == 0) return 0.0;
+        int len = Math.min(v1.length, v2.length);
+        double dot = 0.0;
+        double norm1 = 0.0;
+        double norm2 = 0.0;
+        for (int i = 0; i < len; i++) {
+            dot += v1[i] * v2[i];
+            norm1 += v1[i] * v1[i];
+            norm2 += v2[i] * v2[i];
+        }
+        if (norm1 <= 1e-6 || norm2 <= 1e-6) return 0.0;
+        return dot / (Math.sqrt(norm1) * Math.sqrt(norm2));
     }
 }

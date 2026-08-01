@@ -405,12 +405,12 @@ public class AttendanceController {
                     }
                 }
 
-                // Match condition: Cosine Similarity > 0.40 or Euclidean Distance < 1.15
-                if (bestMatch != null && (maxSimilarity >= 0.40 || minDistance < 1.15)) {
+                // Match condition: Cosine Similarity >= 0.65 and Euclidean Distance < 0.85 (Strict DeepFace/Facenet threshold)
+                if (bestMatch != null && maxSimilarity >= 0.65 && minDistance < 0.85) {
                     System.out.println("Facial recognition match succeeded: " + bestMatch.getEmployee().getName() + " (" + bestMatch.getEmployee().getEmployeeId() + ") - Similarity: " + maxSimilarity + ", Distance: " + minDistance);
                     return bestMatch.getEmployee();
                 } else {
-                    System.out.println("Facial recognition match rejected: max similarity " + maxSimilarity + " < 0.40 and min distance " + minDistance + " >= 1.15. Access denied.");
+                    System.out.println("Facial recognition match rejected: max similarity " + maxSimilarity + " (requires >= 0.65) and min distance " + minDistance + " (requires < 0.85). Access denied.");
                     return null;
                 }
             }
