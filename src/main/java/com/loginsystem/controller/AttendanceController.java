@@ -203,14 +203,15 @@ public class AttendanceController {
         
         Optional<AttendanceRecord> existing = attendanceRecordRepository.findByEmployeeAndDate(matchedEmployee, today);
         if (!existing.isPresent()) {
-            AttendanceRecord record = new AttendanceRecord(matchedEmployee, today, nowTime, nowTime, 0.0, "PRESENT", true);
+            String status = nowTime.isAfter(LocalTime.of(9, 15)) ? "LATE" : "PRESENT";
+            AttendanceRecord record = new AttendanceRecord(matchedEmployee, today, nowTime, null, 0.0, status, true);
             attendanceRecordRepository.save(record);
             
-            logRepository.save(new Log(formattedTime, "Check-out (Auto Check-in) for: " + matchedEmployee.getName() + " at " + formattedTime, "SUCCESS"));
+            logRepository.save(new Log(formattedTime, "Check-in for: " + matchedEmployee.getName() + " at " + formattedTime, "SUCCESS"));
             Map<String, Object> resp = new HashMap<>();
             resp.put("employee", matchedEmployee);
             resp.put("record", record);
-            resp.put("message", "Goodbye, " + matchedEmployee.getName() + ". Check-out recorded at " + formattedTime + ".");
+            resp.put("message", "Welcome, " + matchedEmployee.getName() + ". Check-in recorded at " + formattedTime + " [" + status + "].");
             if (warning != null) {
                 resp.put("warning", warning);
             }
@@ -384,8 +385,9 @@ public class AttendanceController {
                     storedVector = parseEmbedding(faceEmb);
                 }
 
-                // If stored vector is empty/zero or legacy, dynamically compute embedding from face image
-                if ((storedVector == null || isAllZeros(storedVector)) && face.getFaceImage() != null && face.getFaceImage().startsWith("data:image")) {
+                // If stored vector is empty/zero or dimension mismatches live vector, dynamically compute real embedding from face image
+                if ((storedVector == null || isAllZeros(storedVector) || storedVector.length != liveVector.length) 
+                        && face.getFaceImage() != null && face.getFaceImage().startsWith("data:image")) {
                     try {
                         BiometricPythonService.RecognitionResult storedRec = biometricPythonService.recognizeFace(face.getFaceImage());
                         if (storedRec.faceDetected && storedRec.embedding != null && !storedRec.embedding.isEmpty()) {
@@ -398,7 +400,7 @@ public class AttendanceController {
                     }
                 }
 
-                if (storedVector != null && !isAllZeros(storedVector)) {
+                if (storedVector != null && !isAllZeros(storedVector) && storedVector.length == liveVector.length) {
                     double sim = calculateCosineSimilarity(liveVector, storedVector);
                     if (sim > maxSimilarity) {
                         maxSimilarity = sim;
@@ -407,12 +409,12 @@ public class AttendanceController {
                 }
             }
 
-            // Match condition: Cosine Similarity >= 0.52 (Accurate Facenet threshold)
-            if (bestMatch != null && maxSimilarity >= 0.52) {
+            // Match condition: Cosine Similarity >= 0.65 (Strict Facenet threshold)
+            if (bestMatch != null && maxSimilarity >= 0.65) {
                 System.out.println("Facial recognition match succeeded: " + bestMatch.getEmployee().getName() + " (" + bestMatch.getEmployee().getEmployeeId() + ") - Similarity: " + maxSimilarity);
                 return bestMatch.getEmployee();
             } else {
-                System.out.println("Facial recognition match rejected: max similarity " + maxSimilarity + " < 0.52 threshold. Access denied.");
+                System.out.println("Facial recognition match rejected: max similarity " + maxSimilarity + " < 0.65 threshold. Access denied.");
                 return null;
             }
         }
@@ -500,7 +502,8 @@ public class AttendanceController {
 
     private double calculateCosineSimilarity(double[] v1, double[] v2) {
         if (v1 == null || v2 == null || v1.length == 0 || v2.length == 0) return 0.0;
-        int len = Math.min(v1.length, v2.length);
+        if (v1.length != v2.length) return 0.0;
+        int len = v1.length;
         double dot = 0.0;
         double norm1 = 0.0;
         double norm2 = 0.0;

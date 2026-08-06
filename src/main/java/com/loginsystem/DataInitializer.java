@@ -42,17 +42,18 @@ public class DataInitializer implements CommandLineRunner {
         List<EmployeeFaceImage> faces = employeeFaceImageRepository.findAll();
         for (EmployeeFaceImage face : faces) {
             if (face.getEmbedding() == null || face.getEmbedding().trim().isEmpty() || face.getEmbedding().replace("[","").replace("]","").trim().isEmpty()) {
-                double seed = 0.5;
-                if (face.getEmployee() != null) {
-                    String empId = face.getEmployee().getEmployeeId();
-                    if (empId != null) {
-                        seed = Math.abs(empId.hashCode() % 100) / 120.0 + 0.1;
+                if (face.getFaceImage() != null && face.getFaceImage().startsWith("data:image")) {
+                    try {
+                        BiometricPythonService.RecognitionResult storedRec = biometricPythonService.recognizeFace(face.getFaceImage());
+                        if (storedRec.faceDetected && storedRec.embedding != null && !storedRec.embedding.isEmpty()) {
+                            face.setEmbedding(storedRec.embedding.toString());
+                            employeeFaceImageRepository.save(face);
+                            logRepository.save(new Log(LocalTime.now().toString(), "Extracted real FaceNet embedding for employee: " + (face.getEmployee() != null ? face.getEmployee().getName() : "Unknown"), "SECURE"));
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Notice: Dynamic face embedding extraction on startup skipped: " + e.getMessage());
                     }
                 }
-                String newEmb = generateMockEmbedding(seed);
-                face.setEmbedding(newEmb);
-                employeeFaceImageRepository.save(face);
-                logRepository.save(new Log(LocalTime.now().toString(), "Repaired empty face embedding for employee: " + (face.getEmployee() != null ? face.getEmployee().getName() : "Unknown"), "SECURE"));
             }
         }
 
