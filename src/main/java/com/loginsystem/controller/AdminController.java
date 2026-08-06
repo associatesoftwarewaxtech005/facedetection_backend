@@ -11,12 +11,15 @@ import com.loginsystem.service.BiometricPythonService;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
+
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
     @Autowired
     private AdminUserRepository adminUserRepository;
@@ -125,7 +128,7 @@ public class AdminController {
         Employee saved = employeeRepository.save(employee);
         
         // Log action
-        logRepository.save(new Log(LocalTime.now().toString(), "Created employee profile: " + employee.getName() + " (" + employee.getEmployeeId() + ")", "SUCCESS"));
+        logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Created employee profile: " + employee.getName() + " (" + employee.getEmployeeId() + ")", "SUCCESS"));
         
         return ResponseEntity.ok(saved);
     }
@@ -145,7 +148,7 @@ public class AdminController {
             }
             Employee updated = employeeRepository.save(employee);
             
-            logRepository.save(new Log(LocalTime.now().toString(), "Updated employee profile: " + employee.getName(), "SUCCESS"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Updated employee profile: " + employee.getName(), "SUCCESS"));
             return ResponseEntity.ok(updated);
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -159,7 +162,7 @@ public class AdminController {
             attendanceRecordRepository.deleteByEmployee(employee);
             employeeRepository.delete(employee);
             
-            logRepository.save(new Log(LocalTime.now().toString(), "Deleted employee: " + employee.getName(), "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Deleted employee: " + employee.getName(), "ALERT"));
             
             Map<String, Boolean> response = new HashMap<>();
             response.put("deleted", Boolean.TRUE);
@@ -218,7 +221,7 @@ public class AdminController {
             EmployeeFaceImage newFace = new EmployeeFaceImage(employee, faceImage, embedding);
             employeeFaceImageRepository.save(newFace);
             
-            logRepository.save(new Log(LocalTime.now().toString(), "Registered biometric face image for " + employee.getName(), "SECURE"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Registered biometric face image for " + employee.getName(), "SECURE"));
             return ResponseEntity.ok(Map.of("message", "Face image successfully registered.", "id", newFace.getId()));
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -286,7 +289,7 @@ public class AdminController {
             }
             
             AttendanceRecord updated = attendanceRecordRepository.save(record);
-            logRepository.save(new Log(LocalTime.now().toString(), "Manually updated attendance ledger record for " + record.getEmployee().getName(), "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Manually updated attendance ledger record for " + record.getEmployee().getName(), "ALERT"));
             return ResponseEntity.ok(updated);
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -301,7 +304,7 @@ public class AdminController {
         long totalEmployees = employeeRepository.count();
         long activeEmployees = employeeRepository.findAll().stream().filter(e -> "ACTIVE".equalsIgnoreCase(e.getStatus())).count();
         
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(IST_ZONE);
         List<AttendanceRecord> todayRecords = attendanceRecordRepository.findByDateBetween(today, today);
         
         long presentToday = todayRecords.size();

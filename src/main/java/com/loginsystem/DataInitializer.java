@@ -48,7 +48,7 @@ public class DataInitializer implements CommandLineRunner {
                         if (storedRec.faceDetected && storedRec.embedding != null && !storedRec.embedding.isEmpty()) {
                             face.setEmbedding(storedRec.embedding.toString());
                             employeeFaceImageRepository.save(face);
-                            logRepository.save(new Log(LocalTime.now().toString(), "Extracted real FaceNet embedding for employee: " + (face.getEmployee() != null ? face.getEmployee().getName() : "Unknown"), "SECURE"));
+                            logRepository.save(new Log(LocalTime.now(java.time.ZoneId.of("Asia/Kolkata")).toString(), "Extracted real FaceNet embedding for employee: " + (face.getEmployee() != null ? face.getEmployee().getName() : "Unknown"), "SECURE"));
                         }
                     } catch (Exception e) {
                         System.err.println("Notice: Dynamic face embedding extraction on startup skipped: " + e.getMessage());
@@ -59,7 +59,7 @@ public class DataInitializer implements CommandLineRunner {
 
         // Update any existing attendance records dated 2026-07-18 to today's actual date
         List<AttendanceRecord> oldRecords = attendanceRecordRepository.findAll();
-        LocalDate todayActual = LocalDate.now();
+        LocalDate todayActual = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         for (AttendanceRecord rec : oldRecords) {
             if (rec.getDate() != null && rec.getDate().isBefore(todayActual)) {
                 if (rec.getDate().toString().equals("2026-07-18")) {

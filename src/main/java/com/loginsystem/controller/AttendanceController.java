@@ -9,11 +9,15 @@ import com.loginsystem.service.BiometricPythonService;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 @RestController
 @RequestMapping("/api/attendance")
 public class AttendanceController {
+
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
     @Autowired
     private EmployeeRepository employeeRepository;
@@ -49,7 +53,7 @@ public class AttendanceController {
         String clientImage = payload != null ? payload.getOrDefault("capturedImage", image) : image;
         if (clientImage == null) clientImage = "";
         
-        SecurityLog log = new SecurityLog(clientImage, eventType, clientDevice, clientIp, java.time.LocalDateTime.now().toString());
+        SecurityLog log = new SecurityLog(clientImage, eventType, clientDevice, clientIp, LocalDateTime.now(IST_ZONE).toString());
         securityLogRepository.save(log);
     }
 
@@ -79,7 +83,7 @@ public class AttendanceController {
         // Liveness check: evaluated server-side from Python script score
         if (detectionResult.livenessScore < livenessThreshold) {
             systemNotificationRepository.save(new SystemNotification("Check-in blocked: Anti-spoofing liveness verification failed. Score: " + detectionResult.livenessScore, "WARN"));
-            logRepository.save(new Log(LocalTime.now().toString(), "Spoof attack blocked at check-in: liveness score " + detectionResult.livenessScore + " < threshold " + livenessThreshold, "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Spoof attack blocked at check-in: liveness score " + detectionResult.livenessScore + " < threshold " + livenessThreshold, "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "SPOOF_ATTACK_DETECTED", payload, request);
             return ResponseEntity.status(403).body(Map.of("message", "LIVENESS FAILURE: Photo or spoofing suspected."));
         }
@@ -87,19 +91,19 @@ public class AttendanceController {
         Employee matchedEmployee = matchFace(detectionResult.embedding, scannedEmbStr, capturedImage);
         if (matchedEmployee == null) {
             systemNotificationRepository.save(new SystemNotification("Unauthorized face scan attempt at portal.", "UNKNOWN_FACE"));
-            logRepository.save(new Log(LocalTime.now().toString(), "Unrecognized face scan at check-in portal", "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Unrecognized face scan at check-in portal", "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "UNAUTHORIZED_PERSON_DETECTED", payload, request);
             return ResponseEntity.status(404).body(Map.of("message", "Unauthorized Person Detected. Access Denied."));
         }
 
         if (!"ACTIVE".equalsIgnoreCase(matchedEmployee.getStatus())) {
-            logRepository.save(new Log(LocalTime.now().toString(), "Inactive employee " + matchedEmployee.getName() + " blocked", "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Inactive employee " + matchedEmployee.getName() + " blocked", "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "INACTIVE_ACCOUNT_BLOCKED", payload, request);
             return ResponseEntity.status(403).body(Map.of("message", "ACCESS DENIED: Account status is INACTIVE."));
         }
 
-        LocalDate today = LocalDate.now();
-        LocalTime nowTime = LocalTime.now();
+        LocalDate today = LocalDate.now(IST_ZONE);
+        LocalTime nowTime = LocalTime.now(IST_ZONE);
         String formattedTime = String.format("%02d:%02d:%02d", nowTime.getHour(), nowTime.getMinute(), nowTime.getSecond());
         
         Optional<AttendanceRecord> existing = attendanceRecordRepository.findByEmployeeAndDate(matchedEmployee, today);
@@ -184,7 +188,7 @@ public class AttendanceController {
         // Liveness check: evaluated server-side from Python script score
         if (detectionResult.livenessScore < livenessThreshold) {
             systemNotificationRepository.save(new SystemNotification("Check-out blocked: Liveness verification failed. Score: " + detectionResult.livenessScore, "WARN"));
-            logRepository.save(new Log(LocalTime.now().toString(), "Spoof check-out blocked: liveness score " + detectionResult.livenessScore, "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Spoof check-out blocked: liveness score " + detectionResult.livenessScore, "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "SPOOF_ATTACK_DETECTED", payload, request);
             return ResponseEntity.status(403).body(Map.of("message", "LIVENESS FAILURE: Photo or spoofing suspected."));
         }
@@ -192,13 +196,13 @@ public class AttendanceController {
         Employee matchedEmployee = matchFace(detectionResult.embedding, scannedEmbStr, capturedImage);
         if (matchedEmployee == null) {
             systemNotificationRepository.save(new SystemNotification("Unauthorized face scan attempt at check-out portal.", "UNKNOWN_FACE"));
-            logRepository.save(new Log(LocalTime.now().toString(), "Unrecognized face scan at check-out portal", "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Unrecognized face scan at check-out portal", "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "UNAUTHORIZED_PERSON_DETECTED", payload, request);
             return ResponseEntity.status(404).body(Map.of("message", "Unauthorized Person Detected. Access Denied."));
         }
 
-        LocalDate today = LocalDate.now();
-        LocalTime nowTime = LocalTime.now();
+        LocalDate today = LocalDate.now(IST_ZONE);
+        LocalTime nowTime = LocalTime.now(IST_ZONE);
         String formattedTime = String.format("%02d:%02d:%02d", nowTime.getHour(), nowTime.getMinute(), nowTime.getSecond());
         
         Optional<AttendanceRecord> existing = attendanceRecordRepository.findByEmployeeAndDate(matchedEmployee, today);
@@ -309,7 +313,7 @@ public class AttendanceController {
         // Liveness check: evaluated server-side from Python script score
         if (detectionResult.livenessScore < livenessThreshold) {
             systemNotificationRepository.save(new SystemNotification("Portal login blocked: Liveness verification failed. Score: " + detectionResult.livenessScore, "WARN"));
-            logRepository.save(new Log(LocalTime.now().toString(), "Spoof portal login blocked: liveness score " + detectionResult.livenessScore, "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Spoof portal login blocked: liveness score " + detectionResult.livenessScore, "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "SPOOF_ATTACK_DETECTED", payload, request);
             return ResponseEntity.status(403).body(Map.of("message", "LIVENESS FAILURE: Photo or spoofing suspected."));
         }
@@ -317,13 +321,13 @@ public class AttendanceController {
         Employee matchedEmployee = matchFace(detectionResult.embedding, scannedEmbStr, capturedImage);
         if (matchedEmployee == null) {
             systemNotificationRepository.save(new SystemNotification("Unauthorized portal login attempt.", "UNKNOWN_FACE"));
-            logRepository.save(new Log(LocalTime.now().toString(), "Unrecognized face scan at portal login", "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Unrecognized face scan at portal login", "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "UNAUTHORIZED_PERSON_DETECTED", payload, request);
             return ResponseEntity.status(404).body(Map.of("message", "Unauthorized Person Detected. Access Denied."));
         }
 
         if (!"ACTIVE".equalsIgnoreCase(matchedEmployee.getStatus())) {
-            logRepository.save(new Log(LocalTime.now().toString(), "Portal login denied for inactive employee: " + matchedEmployee.getName(), "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Portal login denied for inactive employee: " + matchedEmployee.getName(), "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "INACTIVE_ACCOUNT_BLOCKED", payload, request);
             return ResponseEntity.status(403).body(Map.of("message", "ACCESS DENIED: Account status is INACTIVE."));
         }
@@ -331,12 +335,12 @@ public class AttendanceController {
         // Backend enforcement: Verify scanned employee ID matches the portal login target ID
         if (expectedId != null && !expectedId.trim().isEmpty() && !expectedId.equalsIgnoreCase(matchedEmployee.getEmployeeId())) {
             systemNotificationRepository.save(new SystemNotification("Portal login blocked: Identity mismatch.", "WARN"));
-            logRepository.save(new Log(LocalTime.now().toString(), "Portal login ID mismatch: " + expectedId + " matched to " + matchedEmployee.getName(), "ALERT"));
+            logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Portal login ID mismatch: " + expectedId + " matched to " + matchedEmployee.getName(), "ALERT"));
             createSecurityLog(payload.get("capturedImage"), "IDENTITY_MISMATCH", payload, request);
             return ResponseEntity.status(403).body(Map.of("message", "IDENTITY MISMATCH: Scanned face does not match input Employee ID."));
         }
 
-        logRepository.save(new Log(LocalTime.now().toString(), "Portal login verified for: " + matchedEmployee.getName(), "SUCCESS"));
+        logRepository.save(new Log(LocalTime.now(IST_ZONE).toString(), "Portal login verified for: " + matchedEmployee.getName(), "SUCCESS"));
         Map<String, Object> resp = new HashMap<>();
         resp.put("employee", matchedEmployee);
         resp.put("message", "Biometrics verified. Welcome, " + matchedEmployee.getName() + ".");

@@ -1,13 +1,18 @@
 # Use Eclipse Temurin JDK 17 base image (Ubuntu Jammy)
 FROM eclipse-temurin:17-jdk-jammy
 
-# Install Python 3, pip, virtual environment (venv), and shared libraries required by OpenCV (headless)
+# Set timezone environment variable to Indian Standard Time (IST)
+ENV TZ=Asia/Kolkata
+
+# Install Python 3, pip, virtual environment (venv), tzdata, and shared libraries required by OpenCV (headless)
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
     libgl1-mesa-glx \
     libglib2.0-0 \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory inside the container
@@ -30,5 +35,5 @@ RUN ./gradlew bootJar --no-daemon
 # Expose port (Railway will override this via the PORT environment variable)
 EXPOSE 8082
 
-# Start the Spring Boot application jar
-CMD ["java", "-XX:+UseG1GC", "-Xmx384m", "-jar", "build/libs/loginsystem-0.0.1-SNAPSHOT.jar"]
+# Start the Spring Boot application jar with explicit Asia/Kolkata timezone
+CMD ["java", "-Duser.timezone=Asia/Kolkata", "-XX:+UseG1GC", "-Xmx384m", "-jar", "build/libs/loginsystem-0.0.1-SNAPSHOT.jar"]
